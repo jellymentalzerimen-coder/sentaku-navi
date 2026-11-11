@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>選択ナビ</title>
+<meta name="description" content="ユニクロ・GUなどの服を、素材と特性で横断して探す・比べる非公式サイト">
+<meta name="theme-color" content="#1f5f8b">
+<meta property="og:type" content="website">
+<meta property="og:title" content="選択ナビ — 服を素材で選ぶ">
+<meta property="og:description" content="ユニクロ・GUの服を、素材(綿・ウール・ポリエステル…)と特性(吸湿・保温・静電気…)で横断して絞り込み・比較できる非公式サイト">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f5f8b'/%3E%3Cpath d='M9 11l4-4h6l4 4-3 3v11H12V14z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <a class="logo" href="#" id="logo">選択ナビ<span class="logo-sub">服を素材で選ぶ</span></a>
+    <div class="search">
+      <svg aria-hidden="true" viewBox="0 0 24 24" class="search-ico"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+      <input id="q" type="search" placeholder="商品名・素材・カテゴリで検索(例: 綿100 Tシャツ)" autocomplete="off" aria-label="検索">
+    </div>
+    <nav class="top-nav">
+      <button class="link-btn" id="open-guide">素材の特徴</button>
+      <button class="link-btn" id="open-about">このサイトについて</button>
+    </nav>
+  </div>
+</header>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="layout">
+  <aside class="filters" id="filters" aria-label="絞り込み">
+    <div class="filters-head">
+      <h2>絞り込み</h2>
+      <button class="link-btn" id="reset">すべて解除</button>
+      <button class="icon-btn close-filters" id="close-filters" aria-label="閉じる">×</button>
+    </div>
+    <div id="filter-body"></div>
+    <div class="filters-foot"><button class="primary-btn" id="apply-filters">結果を見る(<span id="count-foot">0</span>件)</button></div>
+  </aside>
+
+  <main class="results">
+    <div class="howto" id="howto" hidden>
+      <ol><li><b>目的</b>のボタンを押す</li><li><b>素材・特性</b>で絞り込む</li><li>気になる服を<b>＋比較</b>で並べる</li></ol>
+      <button class="icon-btn" id="howto-close" aria-label="使い方の案内を閉じる">×</button>
+    </div>
+    <div class="presets" id="presets" aria-label="目的から選ぶ"></div>
+    <div class="toolbar">
+      <button class="primary-btn open-filters" id="open-filters"><svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-3px;margin-right:4px;fill:none;stroke:currentColor;stroke-width:2.2"><path d="M3 5h18M6 12h12M10 19h4"/></svg>素材・特性で絞り込む<span class="badge" id="filter-badge" hidden></span></button>
+      <p class="count"><strong id="count">0</strong>件</p>
+      <button class="ghost-btn fav-toggle" id="fav-only" aria-pressed="false" aria-label="お気に入りだけ表示">♡<span class="lbl"> お気に入り</span><span class="badge" id="fav-count" hidden></span></button>
+      <label class="sort"><span class="lbl">並べ替え</span>
+        <select id="sort"></select>
+      </label>
+    </div>
+    <div class="active" id="active" aria-label="選択中の条件"></div>
+    <div class="brandsum" id="brandsum" aria-label="ブランド別の件数と価格"></div>
+    <div class="grid" id="grid"></div>
+    <div class="more-wrap"><button class="ghost-btn" id="more" hidden>もっと見る</button></div>
+    <div class="empty" id="empty" hidden></div>
+  </main>
+</div>
+
+<div class="tray" id="tray" hidden>
+  <div class="tray-inner">
+    <div class="tray-items" id="tray-items"></div>
+    <button class="link-btn" id="tray-clear">クリア</button>
+    <button class="primary-btn" id="tray-open">比較する</button>
+  </div>
+</div>
+
+<dialog id="dlg" class="dlg">
+  <div class="dlg-head"><h2 id="dlg-title"></h2><button class="icon-btn" id="dlg-close" aria-label="閉じる">×</button></div>
+  <div class="dlg-body" id="dlg-body"></div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<footer class="foot">
+  <p><strong>非公式サイトです。</strong>掲載ブランドとは関係ありません。価格・在庫・素材は取得時点の参考情報です。購入前に必ず公式サイトで確認してください。</p>
+  <p id="data-note"></p>
+</footer>
+
+<script src="config.js"></script>
+<script src="materials.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

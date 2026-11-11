@@ -1,0 +1,58 @@
+# 公開リポジトリの .github/workflows/pages.yml にコピーして使う(tools/export_public.sh が行う)
+# - 毎週月曜 03:00(日本時間)に公式サイトから取り直し → 品質チェック → 合格なら data.js を更新して公開
+# - 品質チェックに落ちたら公開中のデータをそのまま残す(Actions の画面に失敗として出る)
+# - main に push した時は取り直さずに公開だけ行う
+name: update-and-deploy
+
+on:
+  schedule:
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 公式サイトから取り直す(1.5秒間隔)
+        if: github.event_name != 'push'
+        run: |
+          python -I scraper/scrape.py --per 20
+          python -I scraper/build_data.py
+          MIN_BRAND=300 python -I tools/check_data.py
+
+      - name: data.js の更新をコミット
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "sentaku-navi-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add site/data.js
+          git diff --cached --quiet || git commit -m "data: 定期更新 $(date -u +%Y-%m-%d)"
+          git push
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
