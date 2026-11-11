@@ -1,4 +1,4 @@
-/* 選択ナビ — 検索・絞り込み・並べ替え・比較(ビルド不要の素の JS) */
+/* 洗濯ナビ — 検索・絞り込み・並べ替え・比較(ビルド不要の素の JS) */
 (() => {
   "use strict";
   const DATA = window.SN_DATA || { products: [], brands: {} };
@@ -152,6 +152,9 @@
   const openGroups = new Set(["brand", "care", "mat", "trait", "gender"]);
 
   const PRESETS = [
+    { id: "wash", t: "家で洗える", s: "洗濯機OK", patch: { care: ["m"] } },
+    { id: "dryer", t: "乾燥機OK", s: "公式の洗濯表示で乾燥機可", patch: { care: ["d"] } },
+    { id: "nonet", t: "ネットなしで洗濯機", s: "洗濯ネット不要", patch: { care: ["m0"] } },
     // 「涼しさ」は繊維より生地の作り(エアリズム・メッシュ等)で決まることが多いので、薄手の判定を使い通気性で並べる
     { id: "cool", t: "涼しく着たい", s: "薄手を通気性の高い順", patch: { thick: ["薄手"], sort: "t:breath" } },
     { id: "sweat", t: "汗をよく吸う", s: "吸湿性4以上", patch: { traits: { absorb: 4 } } },
@@ -161,8 +164,6 @@
     { id: "static", t: "静電気が苦手", s: "静電気の起きにくさ4以上", patch: { traits: { static: 4 } } },
     { id: "cotton", t: "綿100%", s: "本体が綿のみ", patch: { mats: [["綿", "in"]], matMin: 100 } },
     { id: "natural", t: "化学繊維なし", s: "合成繊維5種を除外", patch: { mats: SYNTHETIC.map((m) => [m, "ex"]) } },
-    { id: "wash", t: "家で洗える", s: "洗濯機OK", patch: { care: ["m"] } },
-    { id: "dryer", t: "乾燥機OK", s: "公式の洗濯表示で乾燥機可", patch: { care: ["d"] } },
     { id: "sale", t: "期間限定・値下げ", s: "公式の価格表示あり", patch: { sale: true } },
   ];
 
@@ -724,7 +725,7 @@
   function openAbout() {
     const b = Object.entries(DATA.brands).map(([k, v]) => `${BRAND_LABEL[k] || k}: ${v.count}件(${v.fetchedAt}取得)`).join(" / ");
     openDlg("このサイトについて", `<div style="max-width:720px">
-      <p><b>選択ナビ</b>は、ブランドをまたいで服を「素材」と「素材の特性」で探して比べるための<b>非公式</b>サイトです。掲載ブランドとは関係ありません。</p>
+      <p><b>洗濯ナビ</b>は、ブランドをまたいで服を「洗濯表示(洗濯機・乾燥機)」「素材」「素材の特性」で探して比べるための<b>非公式</b>サイトです。掲載ブランドとは関係ありません。</p>
       <h3>データについて</h3>
       <p>${esc(b) || "データなし"}</p>
       <p>商品名・価格・素材・色・サイズ・評価は、各ブランドの公式サイトで公開されている情報を取得時点で集めたものです。価格や在庫は変わります。<b>購入前に必ず公式サイトで確認してください。</b></p>
