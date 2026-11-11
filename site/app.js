@@ -148,7 +148,7 @@
   const saveFavs = () => { try { localStorage.setItem(FAV_KEY, JSON.stringify([...favs])); } catch (e) { /* 保存不可 */ } };
   let openView = ""; // 開いているダイアログ(商品 id か "cmp")。URL に残して共有できるようにする
   let matPick = "in"; // 素材チップを押した時に「含む」か「除く」か(画面上の切り替え)
-  let shown = PAGE;
+  let page = 1;
   const openGroups = new Set(["brand", "care", "mat", "trait", "gender"]);
 
   const PRESETS = [
@@ -168,7 +168,7 @@
   ];
 
   const SORTS = [
-    ["rec", "おすすめ(評価×件数)"], ["price-asc", "価格が安い順"], ["price-desc", "価格が高い順"], ["rating", "評価が高い順"],
+    ["rec", "おすすめ順"], ["price-asc", "価格が安い順"], ["price-desc", "価格が高い順"], ["rating", "評価が高い順"],
     ["reviews", "レビューが多い順"],["mat", "選んだ素材の混率が高い順"],
     ...TRAITS.map((t) => [`t:${t.key}`, `${t.label}が高い順`]), ["name", "名前順"],
   ];
@@ -199,6 +199,7 @@
     if (S.sort !== "rec") u.set("s", S.sort);
     if (S.preset) u.set("pr", S.preset);
     if (S.favOnly) u.set("fav", "1");
+    if (page > 1) u.set("p", page);
     if (cmp.length) u.set("cmp", cmp.join(","));
     if (openView && $("dlg").open) u.set("open", openView);
     const h = u.toString();
@@ -225,6 +226,7 @@
     s.sort = SORTS.some(([k]) => k === u.get("s")) ? u.get("s") : "rec";
     s.preset = u.get("pr") || "";
     s.favOnly = u.get("fav") === "1";
+    page = Math.max(1, Number(u.get("p")) || 1);
     S = s;
     cmp = list("cmp").filter((id) => BY_ID.has(id)).slice(0, MAX_CMP);
   }
@@ -293,11 +295,25 @@
       <div class="fbody">${hint ? `<p class="fhint">${hint}</p>` : ""}${body}</div></details>`;
   }
   function chipList(kind, entries, selected, labeler = (k) => k, extra = () => "") {
-    return `<div class="chips">${entries.map(([k, n]) => {
+    // 色・サイズは通販サイトと同じく四角いボタン、それ以外はチェックボックスの一覧(件数つき)
+    if (kind === "color" || kind === "size") {
+      return `<div class="chips">${entries.map(([k, n]) => {
+        const on = selected.has(k);
+        return `<button class="chip" data-k="${kind}" data-v="${esc(k)}" aria-pressed="${on}" ${!n && !on ? "disabled" : ""}>${extra(k)}${esc(labeler(k))}<span class="n">${n}</span></button>`;
+      }).join("")}</div>`;
+    }
+    const LIMIT = 8;
+    const open = expanded.has(kind);
+    const rows = entries.map(([k, n], i) => {
       const on = selected.has(k);
-      return `<button class="chip" data-k="${kind}" data-v="${esc(k)}" aria-pressed="${on}" ${!n && !on ? "disabled" : ""}>${extra(k)}${esc(labeler(k))}<span class="n">${n}</span></button>`;
-    }).join("")}</div>`;
+      const hide = !open && i >= LIMIT && !on;
+      return `<button class="opt" role="checkbox" aria-checked="${on}" data-k="${kind}" data-v="${esc(k)}" ${!n && !on ? "disabled" : ""} ${hide ? "hidden" : ""}>
+        <span class="box" aria-hidden="true"></span>${extra(k)}<span class="ol">${esc(labeler(k))}</span><span class="n">(${n.toLocaleString()})</span></button>`;
+    }).join("");
+    const more = entries.length > LIMIT ? `<button class="link-btn opt-more" data-expand="${kind}">${open ? "閉じる" : `もっと見る(${entries.length - LIMIT})`}</button>` : "";
+    return `<div class="opts">${rows}</div>${more}`;
   }
+  const expanded = new Set();
 
   function renderFilters() {
     const html = [];
@@ -427,7 +443,7 @@
     const c = p.care;
     const wcls = c.machine === "可" || c.machine === "ネット" ? "ok" : c.machine === "不可" ? "ng" : "na";
     const dcls = c.dryer === "可" ? "ok" : c.dryer === "不可" ? "ng" : "na";
-    const dm = p.dm ? `<span class="cb dm dm${p.dm.lv}" title="素材から見た目安: ${esc(p.dm.by.join("・"))}">素材: 乾燥機${DRY_LABEL[p.dm.lv]}</span>` : "";
+    const dm = p.dm && !c.dryer ? `<span class="cb dm dm${p.dm.lv}" title="素材から見た目安: ${esc(p.dm.by.join("・"))}">素材: 乾燥機${DRY_LABEL[p.dm.lv]}</span>` : "";
     return `<div class="careb"><span class="cb ${wcls}">${washLabel(c)}</span><span class="cb ${dcls}">${dryerLabel(c)}</span>${dm}</div>`;
   }
   function careDetail(p) {
@@ -448,37 +464,89 @@
     return src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="${cls}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'noimg',textContent:'画像なし'}))">`
       : `<span class="noimg">画像なし</span>`;
   }
+  // ★の評価(公式の平均と件数をそのまま出す。評価なしは出さない)
+  function stars(p) {
+    if (!p.r) return `<div class="stars none">評価なし</div>`;
+    const w = Math.max(0, Math.min(100, (p.r / 5) * 100));
+    return `<div class="stars" aria-label="評価 ${p.r.toFixed(1)}(${p.rc.toLocaleString()}件)"><span class="st" aria-hidden="true"><span class="st-on" style="width:${w}%">★★★★★</span>★★★★★</span><b>${p.r.toFixed(1)}</b><span class="rc">(${p.rc.toLocaleString()})</span></div>`;
+  }
   function priceHtml(p) {
-    return `<span class="price ${p.deal ? "sale" : ""}">${yen(p.p)}${p.off ? `<del>${yen(p.bp)}</del>` : ""}${p.pf.length ? `<span class="deal">${esc(p.pf[0])}</span>` : ""}</span>`;
+    return `<span class="price ${p.deal ? "sale" : ""}">${yen(p.p)}${p.off ? `<del>${yen(p.bp)}</del>` : ""}${p.pf.length ? `<span class="deal" title="${esc(p.pf.join(" / "))}">${esc(p.pf[0].length > 10 ? "期間限定価格" : p.pf[0])}</span>` : ""}</span>`;
   }
   function card(p) {
     const inCmp = cmp.includes(p.id);
+    // 通販サイトの並び: 画像 → ブランド → 商品名 → ★評価(件数) → 価格 → 洗濯・素材
+    const traitsActive = Object.values(S.traits).some(Boolean) || S.sort.startsWith("t:");
     return `<article class="card">
-      <button class="card-img" data-open="${p.id}" aria-label="${esc(p.n)}の詳細">${img(p)}<span class="brand-tag ${p.b}">${BRAND_LABEL[p.b]}</span></button>
+      <button class="card-img" data-open="${p.id}" aria-label="${esc(p.n)}の詳細">${img(p)}</button>
       <div class="card-body">
+        <div class="card-brand"><span class="bn">${BRAND_LABEL[p.b]}</span><span class="card-meta">${esc(p.cat)}・${esc(p.g)}${p.thick !== "ふつう" ? `・<span class="thick ${p.thick === "厚手" ? "th-k" : "th-n"}">${p.thick}</span>` : ""}${p.v > 1 ? `・${p.v}種` : ""}</span></div>
         <button class="card-name" data-open="${p.id}">${esc(p.n)}</button>
-        <div class="card-meta">${esc(p.g)}・${esc(p.cat)}${p.thick !== "ふつう" ? `・<span class="thick ${p.thick === "厚手" ? "th-k" : "th-n"}">${p.thick}</span>` : ""}${p.v > 1 ? `・柄/色違い${p.v}種` : ""}</div>
+        ${stars(p)}
         ${priceHtml(p)}
-        ${matBar(p)}${matText(p)}
         ${careBadges(p)}
-        ${topTraits(p)}
+        ${matBar(p)}${matText(p)}
+        ${traitsActive ? topTraits(p) : ""}
         <div class="card-foot">
-          <span class="rating">${p.r ? `★${p.r.toFixed(1)}(${p.rc.toLocaleString()})` : ""}</span>
           <button class="fav-btn" data-fav="${p.id}" aria-pressed="${favs.has(p.id)}" aria-label="お気に入り${favs.has(p.id) ? "から外す" : "に追加"}">${favs.has(p.id) ? "♥" : "♡"}</button>
           <button class="cmp-btn" data-cmp="${p.id}" aria-pressed="${inCmp}">${inCmp ? "比較中" : "＋比較"}</button>
         </div>
       </div></article>`;
   }
 
+  // ページ送り: ‹ 前へ 1 2 3 … 37 次へ ›
+  function renderPager(pages) {
+    if (pages <= 1) { $("pager").innerHTML = ""; return; }
+    const nums = new Set([1, pages, page - 2, page - 1, page, page + 1, page + 2].filter((n) => n >= 1 && n <= pages));
+    const list = [...nums].sort((a, b) => a - b);
+    const out = [];
+    out.push(`<button class="pg" data-page="${page - 1}" ${page === 1 ? "disabled" : ""}>‹ 前へ</button>`);
+    list.forEach((n, i) => {
+      if (i && n - list[i - 1] > 1) out.push(`<span class="pg-gap">…</span>`);
+      out.push(`<button class="pg ${n === page ? "cur" : ""}" data-page="${n}" ${n === page ? 'aria-current="page"' : ""}>${n}</button>`);
+    });
+    out.push(`<button class="pg" data-page="${page + 1}" ${page === pages ? "disabled" : ""}>次へ ›</button>`);
+    $("pager").innerHTML = out.join("");
+  }
+  // パンくず: 洗濯ナビ › カテゴリ › 検索語
+  function renderCrumb() {
+    const parts = [`<button class="link-btn" data-crumb="home">洗濯ナビ</button>`];
+    if (S.cats.size === 1) parts.push(`<button class="link-btn" data-crumb="cat">${esc([...S.cats][0])}</button>`);
+    else parts.push(`<span>すべての商品</span>`);
+    if (S.q) parts.push(`<span>「${esc(S.q)}」の検索結果</span>`);
+    $("crumb").innerHTML = parts.join(`<span class="sep">›</span>`);
+  }
+  // 上部のカテゴリ帯(通販サイトのカテゴリメニューと同じ置き方)。洗濯条件の近道も並べる
+  function renderCatbar() {
+    const cats = [...new Set(P.map((p) => p.cat))];
+    const cur = S.cats.size === 1 ? [...S.cats][0] : "";
+    const shortcut = [["m", "洗濯機OK"], ["d", "乾燥機OK"], ["m0", "ネット不要"]];
+    $("catbar").innerHTML = `<div class="catbar-inner">
+      ${shortcut.map(([k, l]) => `<button class="cb-link care ${S.care.has(k) && S.care.size === 1 ? "cur" : ""}" data-catcare="${k}">${l}</button>`).join("")}
+      <span class="cb-sep" aria-hidden="true"></span>
+      <button class="cb-link ${!cur && !S.care.size ? "cur" : ""}" data-catbar="">すべて</button>
+      ${cats.map((c) => `<button class="cb-link ${cur === c ? "cur" : ""}" data-catbar="${esc(c)}">${esc(c)}</button>`).join("")}
+    </div>`;
+  }
+
   let lastList = [];
   function render() {
     const list = sorted(P.filter((p) => matches(p)));
     lastList = list;
+    const pages = Math.max(1, Math.ceil(list.length / PAGE));
+    page = Math.min(Math.max(1, page), pages);
+    const from = (page - 1) * PAGE;
+    const to = Math.min(list.length, from + PAGE);
+    // 通販サイトでおなじみの「◯件中 ◯〜◯件を表示」
     $("count").textContent = list.length.toLocaleString();
+    $("count-range").textContent = "";
+    $("count-tail").textContent = list.length ? `中 ${(from + 1).toLocaleString()}〜${to.toLocaleString()}件を表示` : "";
     $("count-foot").textContent = list.length.toLocaleString();
-    $("grid").innerHTML = list.slice(0, shown).map(card).join("");
-    $("more").hidden = list.length <= shown;
-    $("more").textContent = `もっと見る(残り${list.length - shown}件)`;
+    $("grid").innerHTML = list.slice(from, to).map(card).join("");
+    renderPager(pages);
+    renderCrumb();
+    renderCatbar();
+    $("qcat").value = S.cats.size === 1 ? [...S.cats][0] : "";
     $("empty").hidden = list.length > 0;
     renderBrandSum(list);
     $("fav-only").setAttribute("aria-pressed", String(S.favOnly));
@@ -545,7 +613,10 @@
         <div class="chips" style="justify-content:center"><button class="chip" data-rm="fav">すべての商品を見る</button></div>`;
       return;
     }
-    $("empty").innerHTML = `<p>条件に合う商品がありません。</p>${tips.length ? `<p class="note">次の条件を外すと見つかります:</p>
+    const dryN = P.filter((p) => p.care.dryer === "可").length;
+    const dryWhy = S.care.has("d") ? `<p class="note">公式の洗濯表示で「乾燥機OK」の服は全体の${dryN}件(約${Math.round(dryN / P.length * 100)}%)だけです。多くの服は乾燥機の使用を避けるよう表示されています。</p>
+      <div class="chips" style="justify-content:center;margin-bottom:8px"><button class="chip" data-swapdry="1">代わりに「乾燥機に不向きな素材なし(目安)」で探す</button></div>` : "";
+    $("empty").innerHTML = `<p>条件に合う商品がありません。</p>${dryWhy}${tips.length ? `<p class="note">次の条件を外すと見つかります:</p>
       <div class="chips" style="justify-content:center">${tips.map(([label, act, n]) => `<button class="chip" data-rm="${esc(act)}">${label.startsWith("「") ? esc(label) : `「${esc(label)}」`}を外す → ${n}件</button>`).join("")}</div>` : ""}`;
   }
 
@@ -759,7 +830,7 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
   }
-  function changed() { S.preset = ""; shown = PAGE; render(); }
+  function changed() { S.preset = ""; page = 1; render(); }
   function toggleSet(set, v) { set.has(v) ? set.delete(v) : set.add(v); }
   function toggleCmp(id) {
     if (cmp.includes(id)) cmp = cmp.filter((x) => x !== id);
@@ -773,6 +844,8 @@
     if (!t) return;
     const d = t.dataset;
     if (d.open) { openDetail(d.open); return; }
+    if (d.swapdry) { S.care.delete("d"); S.care.add("dm1"); changed(); return; }
+    if (d.expand) { expanded.has(d.expand) ? expanded.delete(d.expand) : expanded.add(d.expand); renderFilters(); return; }
     if (d.fav) {
       const on = !favs.has(d.fav);
       on ? favs.add(d.fav) : favs.delete(d.fav);
@@ -816,7 +889,7 @@
         if (pr.patch.sort) S.sort = pr.patch.sort;
         else if (pr.patch.traits) S.sort = `t:${Object.keys(pr.patch.traits)[0]}`;
       }
-      shown = PAGE; render(); return;
+      page = 1; render(); return;
     }
     if (d.rm) {
       removeCond(S, d.rm);
@@ -825,7 +898,7 @@
     }
     if (d.guideMat) {
       S = blank(); S.mats.set(d.guideMat, "in"); S.sort = "mat";
-      $("q").value = ""; $("dlg").close(); shown = PAGE; render(); window.scrollTo({ top: 0 }); return;
+      $("q").value = ""; $("dlg").close(); page = 1; render(); window.scrollTo({ top: 0 }); return;
     }
     if (d.swatch !== undefined && t.classList.contains("swatch")) {
       const p = BY_ID.get(t.parentElement.dataset.pid);
@@ -882,16 +955,29 @@
   let qTimer;
   $("q").addEventListener("input", (e) => {
     clearTimeout(qTimer);
-    qTimer = setTimeout(() => { S.q = e.target.value.trim(); shown = PAGE; render(); }, 120);
+    qTimer = setTimeout(() => { S.q = e.target.value.trim(); page = 1; render(); }, 120);
   });
   $("sort").innerHTML = SORTS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
-  $("more").addEventListener("click", () => {
-    shown += PAGE;
-    $("grid").insertAdjacentHTML("beforeend", lastList.slice(shown - PAGE, shown).map(card).join(""));
-    $("more").hidden = lastList.length <= shown;
-    $("more").textContent = `もっと見る(残り${lastList.length - shown}件)`;
+  // カテゴリ選択(検索窓の左)・検索ボタン・カテゴリ帯・パンくず・ページ送り
+  { const cats = [...new Set(P.map((p) => p.cat))];
+    $("qcat").insertAdjacentHTML("beforeend", cats.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("")); }
+  $("qcat").addEventListener("change", (e) => { S.cats = e.target.value ? new Set([e.target.value]) : new Set(); changed(); });
+  $("search-form").addEventListener("submit", (e) => {
+    e.preventDefault(); clearTimeout(qTimer); S.q = $("q").value.trim(); page = 1; render();
+    document.querySelector(".results").scrollIntoView({ block: "start" });
   });
-  $("reset").addEventListener("click", () => { S = blank(); $("q").value = ""; shown = PAGE; render(); });
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-catbar], [data-catcare], [data-page], [data-crumb]");
+    if (!t) return;
+    const d = t.dataset;
+    if (d.page !== undefined) { page = Number(d.page); render(); document.querySelector(".results").scrollIntoView({ block: "start" }); return; }
+    if (d.catbar !== undefined) { S.cats = d.catbar ? new Set([d.catbar]) : new Set(); if (!d.catbar) S.care = new Set(); }
+    else if (d.catcare) { S.care = new Set([d.catcare]); }
+    else if (d.crumb === "home") { S = blank(); $("q").value = ""; }
+    else if (d.crumb === "cat") { const c = [...S.cats][0]; S = blank(); S.cats = new Set([c]); $("q").value = ""; }
+    changed();
+  });
+  $("reset").addEventListener("click", () => { S = blank(); $("q").value = ""; page = 1; render(); });
   // 使い方の案内: 閉じたらこの端末では出さない(保存できない環境では毎回出る)
   const HOWTO_KEY = "sentaku-navi:howto-closed";
   let howtoClosed = false;
@@ -903,9 +989,9 @@
   });
   $("fav-only").addEventListener("click", () => {
     if (!favs.size && !S.favOnly) { toast("♡ を押した商品がここに集まります"); return; }
-    S.favOnly = !S.favOnly; shown = PAGE; render();
+    S.favOnly = !S.favOnly; page = 1; render();
   });
-  $("logo").addEventListener("click", (e) => { e.preventDefault(); S = blank(); cmp = []; $("q").value = ""; shown = PAGE; render(); });
+  $("logo").addEventListener("click", (e) => { e.preventDefault(); S = blank(); cmp = []; $("q").value = ""; page = 1; render(); });
   $("tray-open").addEventListener("click", () => openCompare());
   $("tray-clear").addEventListener("click", () => { cmp = []; render(); });
   $("dlg-close").addEventListener("click", () => $("dlg").close());

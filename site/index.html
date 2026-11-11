@@ -13,20 +13,24 @@
 <meta name="twitter:card" content="summary">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f5f8b'/%3E%3Cpath d='M9 11l4-4h6l4 4-3 3v11H12V14z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="shop.css">
 </head>
 <body>
 <header class="top">
   <div class="top-inner">
-    <a class="logo" href="#" id="logo">洗濯ナビ<span class="logo-sub">服を素材と洗濯表示で選ぶ</span></a>
-    <div class="search">
-      <svg aria-hidden="true" viewBox="0 0 24 24" class="search-ico"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-      <input id="q" type="search" placeholder="商品名・素材・カテゴリで検索(例: 綿100 Tシャツ)" autocomplete="off" aria-label="検索">
-    </div>
+    <a class="logo" href="#" id="logo">洗濯ナビ<span class="logo-sub">服を洗濯表示と素材で選ぶ</span></a>
+    <form class="search" id="search-form" role="search" onsubmit="return false">
+      <select id="qcat" aria-label="カテゴリ"><option value="">すべて</option></select>
+      <input id="q" type="search" placeholder="商品名・素材で検索" autocomplete="off" aria-label="検索">
+      <button type="submit" class="search-btn" aria-label="検索"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
+    </form>
     <nav class="top-nav">
-      <button class="link-btn" id="open-guide">素材の特徴</button>
-      <button class="link-btn" id="open-about">このサイトについて</button>
+      <button class="nav-btn" id="open-guide"><small>素材の</small>特徴</button>
+      <button class="nav-btn fav-toggle" id="fav-only" aria-pressed="false" aria-label="お気に入りだけ表示"><small>♡</small>お気に入り<span class="badge" id="fav-count" hidden></span></button>
+      <button class="nav-btn" id="open-about"><small>このサイト</small>について</button>
     </nav>
   </div>
+  <nav class="catbar" id="catbar" aria-label="カテゴリと洗濯条件"></nav>
 </header>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -42,23 +46,23 @@
   </aside>
 
   <main class="results">
+    <nav class="crumb" id="crumb" aria-label="現在の場所"></nav>
     <div class="howto" id="howto" hidden>
-      <ol><li><b>目的</b>のボタンを押す</li><li><b>洗濯・乾燥</b>や<b>素材</b>で絞り込む</li><li>気になる服を<b>＋比較</b>で並べる</li></ol>
+      <ol><li><b>洗濯・乾燥</b>や<b>素材</b>で絞り込む</li><li>商品を押して<b>洗濯表示と素材</b>を確認</li><li>気になる服を<b>＋比較</b>で並べる</li></ol>
       <button class="icon-btn" id="howto-close" aria-label="使い方の案内を閉じる">×</button>
     </div>
-    <div class="presets" id="presets" aria-label="目的から選ぶ"></div>
     <div class="toolbar">
+      <p class="count"><span id="count-range"></span><strong id="count">0</strong>件<span id="count-tail"></span></p>
       <button class="primary-btn open-filters" id="open-filters"><svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-3px;margin-right:4px;fill:none;stroke:currentColor;stroke-width:2.2"><path d="M3 5h18M6 12h12M10 19h4"/></svg>洗濯・素材で絞り込む<span class="badge" id="filter-badge" hidden></span></button>
-      <p class="count"><strong id="count">0</strong>件</p>
-      <button class="ghost-btn fav-toggle" id="fav-only" aria-pressed="false" aria-label="お気に入りだけ表示">♡<span class="lbl"> お気に入り</span><span class="badge" id="fav-count" hidden></span></button>
-      <label class="sort"><span class="lbl">並べ替え</span>
+      <label class="sort"><span class="lbl">並べ替え:</span>
         <select id="sort"></select>
       </label>
     </div>
     <div class="active" id="active" aria-label="選択中の条件"></div>
+    <div class="presets-wrap"><span class="presets-label">目的から探す</span><div class="presets" id="presets" aria-label="目的から選ぶ"></div></div>
     <div class="brandsum" id="brandsum" aria-label="ブランド別の件数と価格"></div>
     <div class="grid" id="grid"></div>
-    <div class="more-wrap"><button class="ghost-btn" id="more" hidden>もっと見る</button></div>
+    <nav class="pager" id="pager" aria-label="ページ送り"></nav>
     <div class="empty" id="empty" hidden></div>
   </main>
 </div>
