@@ -328,11 +328,22 @@
     const pickSeg = `<div class="mat-pick seg" role="group" aria-label="素材の選び方">
         <button data-k="matPick" data-v="in" aria-pressed="${matPick === "in"}">＋ 含む素材を選ぶ</button>
         <button data-k="matPick" data-v="ex" aria-pressed="${matPick === "ex"}" class="ex-mode">− 除く素材を選ぶ</button></div>`;
-    const matChips = `<div class="chips">${allMats.map((m) => {
+    // 素材ごとに「乾燥機の向き不向き」と「得意な特性」を横に並べて、選ぶ前に特徴が分かるようにする
+    const DRY_MARK = ["×", "△", "○"];
+    const matFeat = (m) => {
+      const d = DRY[m];
+      const dry = d ? `<span class="mf-dry dm${d.lv}" title="${esc(d.why)}">乾燥機${DRY_MARK[d.lv]}${DRY_LABEL[d.lv]}</span>` : "";
+      const t = MATS[m] && MATS[m].t;
+      const good = t ? TRAITS.filter((tr) => t[tr.key] >= 4).sort((a, b) => t[b.key] - t[a.key]).slice(0, 3)
+        .map((tr) => `<span class="mf-good" title="${esc(tr.label)} ${t[tr.key]}">${esc(tr.short || tr.label)}</span>`).join("") : "";
+      return dry + good;
+    };
+    const matChips = `<div class="matlist">${allMats.map((m) => {
       const st = S.mats.get(m);
       const n = mc.get(m) || 0;
-      return `<button class="chip ${st === "in" ? "on" : st === "ex" ? "ex" : ""}" data-k="mat" data-v="${esc(m)}" aria-pressed="${!!st}" aria-label="${esc(m)} ${st === "in" ? "含む" : st === "ex" ? "除く" : "未選択"}"
-        ${!n && !st ? "disabled" : ""}>${st === "ex" ? "<b>除く</b>" : `<span class="sw" style="background:${MAT_COLOR[m] || "#ccc"}"></span>`}${esc(m)}<span class="n">${n}</span></button>`;
+      return `<button class="matrow ${st === "in" ? "on" : st === "ex" ? "ex" : ""}" data-k="mat" data-v="${esc(m)}" aria-pressed="${!!st}" aria-label="${esc(m)} ${st === "in" ? "含む" : st === "ex" ? "除く" : "未選択"}"
+        ${!n && !st ? "disabled" : ""}><span class="mr-name">${st === "ex" ? "<b class=\"exb\">除く</b>" : `<span class="sw" style="background:${MAT_COLOR[m] || "#ccc"}"></span>`}${esc(m)}<span class="n">${n}</span></span>
+        <span class="mr-feat">${matFeat(m)}</span></button>`;
     }).join("")}</div>`;
     const incN = [...S.mats.values()].filter((v) => v === "in").length;
     const matTools = !incN ? "" : `<div class="mat-mode">

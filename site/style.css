@@ -331,3 +331,23 @@ h3 { font-size: 15px; margin: 20px 0 8px; }
 .sp-nav a[aria-current="page"] { color: var(--text); font-weight: 700; text-decoration: none; }
 .foot a { color: var(--accent); }
 @media (max-width: 860px) { .sp-main h1 { font-size: 20px; } .sp-list { grid-template-columns: minmax(0, 1fr); } }
+
+/* 素材の絞り込み: 1行に素材名・件数・乾燥機の向き・得意な特性 */
+.matlist { display: flex; flex-direction: column; gap: 4px; }
+.matrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; width: 100%; text-align: left;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--text); }
+.matrow:hover:not(:disabled) { border-color: var(--accent); }
+.matrow:disabled { opacity: .45; }
+.matrow .mr-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.matrow .n { color: var(--muted); font-size: 11px; font-weight: 400; }
+.matrow .sw { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); display: inline-block; }
+.matrow .mr-feat { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.mf-dry, .mf-good { font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--line); line-height: 18px; white-space: nowrap; }
+.mf-dry.dm2 { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.mf-dry.dm1 { color: var(--muted); }
+.mf-dry.dm0 { color: var(--sale); border-color: color-mix(in srgb, var(--sale) 40%, transparent); }
+.mf-good { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.matrow.on { background: var(--chip-on); color: var(--chip-on-ink); border-color: var(--chip-on); }
+.matrow.on .n, .matrow.on .mf-dry, .matrow.on .mf-good { color: inherit; border-color: currentColor; opacity: .85; }
+.matrow.ex { background: var(--exclude-soft); border-color: var(--exclude); color: var(--exclude); }
+.matrow .exb { font-size: 11px; background: var(--exclude); color: var(--exclude-ink); border-radius: 4px; padding: 0 4px; }
