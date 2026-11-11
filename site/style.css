@@ -297,3 +297,16 @@ h3 { font-size: 15px; margin: 20px 0 8px; }
   .why-t { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* 洗濯・乾燥 */
+.fsub { font-size: 12px; font-weight: 600; margin: 8px 0 4px; color: var(--muted); }
+.careb { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 2px; }
+.cb { font-size: 11px; padding: 1px 7px; border-radius: 4px; border: 1px solid var(--line); color: var(--text); background: var(--surface); }
+.cb.ok { border-color: color-mix(in srgb, var(--good) 45%, transparent); color: var(--good); background: color-mix(in srgb, var(--good) 10%, transparent); }
+.cb.ng { border-color: color-mix(in srgb, var(--sale) 40%, transparent); color: var(--sale); background: color-mix(in srgb, var(--sale) 8%, transparent); }
+.cb.na { color: var(--muted); }
+.cb.dm { border-style: dashed; }
+.cb.dm2, b.dm2, .dmc.dm2 { color: var(--good); }
+.cb.dm1, b.dm1, .dmc.dm1 { color: var(--muted); }
+.cb.dm0, b.dm0, .dmc.dm0 { color: var(--sale); }
+.dmc { font-size: 12px; white-space: nowrap; }

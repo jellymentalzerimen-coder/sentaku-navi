@@ -1,5 +1,6 @@
 # 公開リポジトリの .github/workflows/pages.yml にコピーして使う(tools/export_public.sh が行う)
 # - 毎週月曜 03:00(日本時間)に公式サイトから取り直し → 品質チェック → 合格なら data.js を更新して公開
+# - 一覧は全ページ取り直す。詳細(素材・洗濯表示)はキャッシュ(ブランチ data-cache)を使い、新商品と古い分だけ取る
 # - 品質チェックに落ちたら公開中のデータをそのまま残す(Actions の画面に失敗として出る)
 # - main に push した時は取り直さずに公開だけ行う
 name: update-and-deploy
@@ -23,7 +24,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 340
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -34,10 +35,38 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 公式サイトから取り直す(1.5秒間隔)
+      - name: 詳細のキャッシュを取り出す
         if: github.event_name != 'push'
         run: |
-          python -I scraper/scrape.py --per 20
+          mkdir -p data/cache
+          if git fetch --depth 1 origin data-cache; then
+            for b in uniqlo gu; do
+              git show "origin/data-cache:details-$b.json.gz" > "data/cache/details-$b.json.gz" || rm -f "data/cache/details-$b.json.gz"
+            done
+          fi
+          ls -la data/cache
+
+      - name: 公式サイトから取り直す(1.5秒間隔)
+        id: scrape
+        if: github.event_name != 'push'
+        run: python -I scraper/scrape.py
+
+      - name: 詳細のキャッシュを保存
+        if: always() && github.event_name != 'push' && steps.scrape.outcome != 'skipped'
+        run: |
+          set -e
+          ls data/cache/*.gz >/dev/null 2>&1 || exit 0
+          tmp=$(mktemp -d)
+          cp data/cache/*.gz "$tmp/"
+          cd "$tmp"
+          git init -q -b data-cache
+          git -c user.name=sentaku-navi-bot -c user.email=actions@users.noreply.github.com add .
+          git -c user.name=sentaku-navi-bot -c user.email=actions@users.noreply.github.com commit -qm "詳細キャッシュ $(date -u +%Y-%m-%d)"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data-cache
+
+      - name: 解析と品質チェック
+        if: github.event_name != 'push'
+        run: |
           python -I scraper/build_data.py
           MIN_BRAND=300 python -I tools/check_data.py
 

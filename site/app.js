@@ -5,6 +5,29 @@
   const CONFIG = Object.assign({ images: true }, window.SN_CONFIG || {});
   const TRAITS = window.SN_TRAITS;
   const MATS = window.SN_MATERIALS;
+  const DRY = window.SN_DRYER || {};
+  const DRY_LABEL = ["不向き", "注意", "向く"];
+  // 素材から見た乾燥機の向き不向き(目安): 本体の10%以上を占める素材のうち一番弱いものに合わせる
+  function dryerFit(p) {
+    const ms = p.mat.filter((m) => m.p >= 10 && DRY[m.n]);
+    const cover = p.mat.filter((m) => DRY[m.n]).reduce((a, m) => a + m.p, 0);
+    if (!ms.length || cover < 50) return null;
+    const lv = Math.min(...ms.map((m) => DRY[m.n].lv));
+    return { lv, by: ms.filter((m) => DRY[m.n].lv === lv).map((m) => m.n) };
+  }
+  // 洗濯表示(公式)の読み取り結果を短い言葉にする
+  const washLabel = (c) => ({ 可: "洗濯機OK", ネット: "洗濯機OK(ネット)", 不可: c.hand ? "手洗いのみ" : "家で洗えない" }[c.machine] || "洗濯表示なし");
+  const dryerLabel = (c) => ({ 可: "乾燥機OK", 不可: "乾燥機NG" }[c.dryer] || "乾燥機 表示なし");
+  const CARE_OPTS = [
+    ["m", "洗濯機で洗える", (p) => p.care.machine === "可" || p.care.machine === "ネット"],
+    ["m0", "ネットなしで洗濯機OK", (p) => p.care.machine === "可"],
+    ["h", "手洗いできる", (p) => p.care.hand || p.care.machine === "可" || p.care.machine === "ネット"],
+    ["d", "乾燥機OK(公式表示)", (p) => p.care.dryer === "可"],
+    ["dm", "乾燥機に向く素材(目安)", (p) => !!p.dm && p.dm.lv === 2],
+    ["dm1", "乾燥機に不向きな素材なし(目安)", (p) => !!p.dm && p.dm.lv >= 1],
+  ];
+  const CARE_FN = Object.fromEntries(CARE_OPTS.map(([k, , f]) => [k, f]));
+  const CARE_NAME = Object.fromEntries(CARE_OPTS.map(([k, l]) => [k, l]));
   const BRAND_LABEL = { uniqlo: "ユニクロ", gu: "GU", muji: "無印良品" };
   const MAX_CMP = 4;
   const PAGE = 60;
@@ -100,8 +123,10 @@
     q.fam = [...new Set(q.col.map(famOf).filter(Boolean))];
     q.col.forEach((c) => { const f = famOf(c); if (f && !FAM_HEX[f]) FAM_HEX[f] = MUTED[c[3]] || c[1]; });
     q.matIdx = Object.fromEntries(q.mat.map((m) => [m.n, m.p]));
+    q.care = q.care || { machine: q.machine ? "可" : null, hand: !!q.hand, dryer: null, dry: null };
+    q.dm = dryerFit(q);
     // 検索対象には解析済みの素材を使う(元の組成文は色ごとの別組成を含み、表示とずれるため入れない)
-    q.hay = norm([BRAND_LABEL[q.b], q.n, q.cat, q.g, q.wash,
+    q.hay = norm([BRAND_LABEL[q.b], q.n, q.cat, q.g, q.wash, washLabel(q.care), dryerLabel(q.care),
       ...q.mat.map((m) => `${m.n}${m.p} ${m.n}${m.p}% ${m.n}`), q.fam.join(" "), (q.tags || []).join(" ")].join(" "));
     q.rec = (q.r || 0) * Math.log10(1 + q.rc) + (q.deal ? 0.3 : 0);
     q.thick = thicknessOf(q);
@@ -112,7 +137,7 @@
   /* ---------- 状態 ---------- */
   const blank = () => ({
     q: "", brands: new Set(), genders: new Set(), cats: new Set(), mats: new Map(), matMode: "and", matMin: 0,
-    traits: {}, tags: new Set(), thick: new Set(), pmin:"", pmax: "", machine: false, sale: false, colors: new Set(), sizes: new Set(), sort: "rec", preset: "", favOnly: false,
+    traits: {}, tags: new Set(), thick: new Set(), pmin:"", pmax: "", care: new Set(), sale: false, colors: new Set(), sizes: new Set(), sort: "rec", preset: "", favOnly: false,
   });
   let S = blank();
   let cmp = [];
@@ -124,7 +149,7 @@
   let openView = ""; // 開いているダイアログ(商品 id か "cmp")。URL に残して共有できるようにする
   let matPick = "in"; // 素材チップを押した時に「含む」か「除く」か(画面上の切り替え)
   let shown = PAGE;
-  const openGroups = new Set(["brand", "mat", "trait", "gender"]);
+  const openGroups = new Set(["brand", "care", "mat", "trait", "gender"]);
 
   const PRESETS = [
     // 「涼しさ」は繊維より生地の作り(エアリズム・メッシュ等)で決まることが多いので、薄手の判定を使い通気性で並べる
@@ -136,7 +161,8 @@
     { id: "static", t: "静電気が苦手", s: "静電気の起きにくさ4以上", patch: { traits: { static: 4 } } },
     { id: "cotton", t: "綿100%", s: "本体が綿のみ", patch: { mats: [["綿", "in"]], matMin: 100 } },
     { id: "natural", t: "化学繊維なし", s: "合成繊維5種を除外", patch: { mats: SYNTHETIC.map((m) => [m, "ex"]) } },
-    { id: "wash", t: "家で洗える", s: "洗濯機可", patch: { machine: true } },
+    { id: "wash", t: "家で洗える", s: "洗濯機OK", patch: { care: ["m"] } },
+    { id: "dryer", t: "乾燥機OK", s: "公式の洗濯表示で乾燥機可", patch: { care: ["d"] } },
     { id: "sale", t: "期間限定・値下げ", s: "公式の価格表示あり", patch: { sale: true } },
   ];
 
@@ -165,7 +191,7 @@
     if (S.thick.size) u.set("th", [...S.thick].join(","));
     if (S.pmin) u.set("pmin", S.pmin);
     if (S.pmax) u.set("pmax", S.pmax);
-    if (S.machine) u.set("w", "1");
+    if (S.care.size) u.set("cr", [...S.care].join(","));
     if (S.sale) u.set("sale", "1");
     if (S.colors.size) u.set("col", [...S.colors].join(","));
     if (S.sizes.size) u.set("sz", [...S.sizes].join(","));
@@ -191,7 +217,9 @@
     s.tags = new Set(list("tg"));
     s.thick = new Set(list("th"));
     s.pmin = u.get("pmin") || ""; s.pmax = u.get("pmax") || "";
-    s.machine = u.get("w") === "1"; s.sale = u.get("sale") === "1";
+    s.care = new Set(list("cr").filter((k) => CARE_FN[k]));
+    if (u.get("w") === "1") s.care.add("m"); // 旧URL(洗濯機可)との互換
+    s.sale = u.get("sale") === "1";
     s.colors = new Set(list("col")); s.sizes = new Set(list("sz"));
     s.sort = SORTS.some(([k]) => k === u.get("s")) ? u.get("s") : "rec";
     s.preset = u.get("pr") || "";
@@ -227,10 +255,8 @@
       if (S.pmax && p.p > Number(S.pmax)) return false;
     }
     if (skip !== "thick" && S.thick.size && !S.thick.has(p.thick)) return false;
-    if (skip !== "care") {
-      if (S.machine && !p.machine) return false;
-      if (S.sale && !p.deal) return false;
-    }
+    if (skip !== "care") for (const k of S.care) if (!CARE_FN[k](p)) return false;
+    if (skip !== "sale" && S.sale && !p.deal) return false;
     if (skip !== "color" && S.colors.size && !p.fam.some((f) => S.colors.has(f))) return false;
     if (skip !== "size" && S.sizes.size && !p.sz.some((z) => S.sizes.has(z))) return false;
     return true;
@@ -277,6 +303,14 @@
     const bc = countBy("brand", (p) => p.b);
     const allBrands = ["uniqlo", "gu", "muji"].filter((b) => DATA.brands[b] || bc.has(b));
     html.push(group("brand", "ブランド", S.brands.size, chipList("brand", allBrands.map((b) => [b, bc.get(b) || 0]), S.brands, (b) => BRAND_LABEL[b] || b)));
+
+    // 洗濯・乾燥: 公式の洗濯表示と、素材から見た乾燥機の目安
+    const crc = countBy("care", (p) => CARE_OPTS.filter(([, , f]) => f(p)).map(([k]) => k));
+    const careChips = (keys) => chipList("care", keys.map((k) => [k, crc.get(k) || 0]), S.care, (k) => CARE_NAME[k]);
+    html.push(group("care", "洗濯・乾燥", S.care.size,
+      `<p class="fsub">公式の洗濯表示</p>${careChips(["m", "m0", "h", "d"])}
+       <p class="fsub">素材から見た乾燥機の目安</p>${careChips(["dm", "dm1"])}`,
+      "複数選ぶと「すべて満たす」。乾燥機の可否は公式表示を優先してください(素材の目安は一般的な傾向)。"));
 
     const gc = countBy("gender", (p) => p.g);
     const gs = ["メンズ", "ウィメンズ", "ユニセックス", "キッズ", "ベビー"].filter((g) => P.some((p) => p.g === g));
@@ -331,20 +365,18 @@
     if (allTags.length) html.push(group("tag", "機能・シリーズ", S.tags.size, chipList("tag", allTags.map((t) => [t, tgc.get(t) || 0]), S.tags),
       "公式サイトの機能表示(エアリズム・ヒートテックなど)。複数選ぶと「どれか」"));
 
-    html.push(group("price", "価格", S.pmin || S.pmax ? 1 : 0, `<div class="price-row">
+    const salec = countBy("sale", (p) => (p.deal ? "s" : []));
+    html.push(group("price", "価格", (S.pmin || S.pmax ? 1 : 0) + (S.sale ? 1 : 0), `<div class="price-row">
       <input type="number" inputmode="numeric" min="0" step="100" placeholder="下限" value="${esc(S.pmin)}" data-k="pmin" aria-label="下限価格"> 〜
       <input type="number" inputmode="numeric" min="0" step="100" placeholder="上限" value="${esc(S.pmax)}" data-k="pmax" aria-label="上限価格"></div>
       <div class="chips" style="margin-top:8px">${[[0, 1000], [0, 2000], [0, 3000], [3000, 6000], [6000, ""]].map(([a, b]) =>
-        `<button class="chip" data-k="prange" data-v="${a}-${b}" aria-pressed="${String(S.pmin) === String(a || "") && String(S.pmax) === String(b)}">${b ? (a ? `${yen(a)}〜${yen(b)}` : `${yen(b)}以下`) : `${yen(a)}以上`}</button>`).join("")}</div>`));
+        `<button class="chip" data-k="prange" data-v="${a}-${b}" aria-pressed="${String(S.pmin) === String(a || "") && String(S.pmax) === String(b)}">${b ? (a ? `${yen(a)}〜${yen(b)}` : `${yen(b)}以下`) : `${yen(a)}以上`}</button>`).join("")}</div>
+      <label class="check" style="margin-top:8px"><input type="checkbox" data-k="sale" ${S.sale ? "checked" : ""}> 期間限定価格・値下げ <span class="note">(${salec.get("s") || 0})</span></label>`));
 
-    const care = countBy("care", (p) => [p.machine ? "m" : null, p.deal ? "s" : null].filter(Boolean));
     const thc = countBy("thick", (p) => p.thick);
     html.push(group("thick", "厚さの目安", S.thick.size, chipList("thick", ["薄手", "ふつう", "厚手"].map((t) => [t, thc.get(t) || 0]), S.thick),
       "商品名・機能・中わたから推定(例: エアリズム→薄手、極暖・ダウン→厚手)"));
 
-    html.push(group("care", "お手入れ・価格", (S.machine ? 1 : 0) + (S.sale ? 1 : 0), `
-      <label class="check"><input type="checkbox" data-k="machine" ${S.machine ? "checked" : ""}> 洗濯機で洗える <span class="note">(${care.get("m") || 0})</span></label>
-      <label class="check"><input type="checkbox" data-k="sale" ${S.sale ? "checked" : ""}> 期間限定価格・値下げ <span class="note">(${care.get("s") || 0})</span></label>`));
 
     const colc = countBy("color", (p) => p.fam);
     const fams = Object.values(COLOR_FAMILY).filter((f) => FAM_HEX[f]);
@@ -378,6 +410,22 @@
     return `<div class="tags">${keys.filter((k) => p.t[k] >= 3.5 || active.includes(k)).map((k) =>
       `<span class="tag ${p.t[k] >= 4 ? "good" : ""}">${TRAITS.find((t) => t.key === k).label} ${p.t[k].toFixed(1)}</span>`).join("")}</div>`;
   }
+  // 商品カードの洗濯・乾燥バッジ(公式表示)。乾燥機は素材の目安も小さく添える
+  function careBadges(p) {
+    const c = p.care;
+    const wcls = c.machine === "可" || c.machine === "ネット" ? "ok" : c.machine === "不可" ? "ng" : "na";
+    const dcls = c.dryer === "可" ? "ok" : c.dryer === "不可" ? "ng" : "na";
+    const dm = p.dm ? `<span class="cb dm dm${p.dm.lv}" title="素材から見た目安: ${esc(p.dm.by.join("・"))}">素材: 乾燥機${DRY_LABEL[p.dm.lv]}</span>` : "";
+    return `<div class="careb"><span class="cb ${wcls}">${washLabel(c)}</span><span class="cb ${dcls}">${dryerLabel(c)}</span>${dm}</div>`;
+  }
+  function careDetail(p) {
+    const c = p.care;
+    const dmTxt = p.dm ? `<b>${DRY_LABEL[p.dm.lv]}</b>(${p.dm.by.map((m) => `${esc(m)}: ${esc(DRY[m].why)}`).join(" / ")})` : "判定できません(素材情報が不足)";
+    const conflict = p.dm && c.dryer === "可" && p.dm.lv < 2 ? `<br><span class="note">※公式表示では乾燥機OKです。生地の加工などで素材の一般的な傾向より強くなっていると考えられます。公式表示を優先してください。</span>` : "";
+    return `${careBadges(p)}
+      <span class="note">公式の表示: ${esc(p.wash || "情報なし")}</span><br>
+      <span class="note">素材から見た乾燥機の目安: ${dmTxt}</span>${conflict}`;
+  }
   function placeholder(p) {
     const cols = p.col.slice(0, 8).map(colorHex);
     const bg = cols.length ? `linear-gradient(90deg, ${cols.map((c, i) => `${c} ${(i / cols.length) * 100}% ${((i + 1) / cols.length) * 100}%`).join(", ")})` : "var(--surface-2)";
@@ -400,6 +448,7 @@
         <div class="card-meta">${esc(p.g)}・${esc(p.cat)}${p.thick !== "ふつう" ? `・<span class="thick ${p.thick === "厚手" ? "th-k" : "th-n"}">${p.thick}</span>` : ""}${p.v > 1 ? `・柄/色違い${p.v}種` : ""}</div>
         ${priceHtml(p)}
         ${matBar(p)}${matText(p)}
+        ${careBadges(p)}
         ${topTraits(p)}
         <div class="card-foot">
           <span class="rating">${p.r ? `★${p.r.toFixed(1)}(${p.rc.toLocaleString()})` : ""}</span>
@@ -460,14 +509,14 @@
     else if (k === "tag") s.tags.delete(v);
     else if (k === "thick") s.thick.delete(v);
     else if (k === "price") { s.pmin = ""; s.pmax = ""; }
-    else if (k === "machine") s.machine = false;
+    else if (k === "care") s.care.delete(v);
     else if (k === "sale") s.sale = false;
     else if (k === "color") s.colors.delete(v);
     else if (k === "size") s.sizes.delete(v);
     else if (k === "fav") s.favOnly = false;
   }
   const cloneState = (s) => ({ ...s, brands: new Set(s.brands), genders: new Set(s.genders), cats: new Set(s.cats), mats: new Map(s.mats),
-    traits: { ...s.traits }, tags: new Set(s.tags), thick: new Set(s.thick), colors: new Set(s.colors), sizes: new Set(s.sizes) });
+    traits: { ...s.traits }, care: new Set(s.care), tags: new Set(s.tags), thick: new Set(s.thick), colors: new Set(s.colors), sizes: new Set(s.sizes) });
 
   // 0件の時: どの条件を外すと何件になるかを出す
   function renderEmpty(actives) {
@@ -501,7 +550,7 @@
     S.tags.forEach((t) => add(t, `tag:${t}`));
     S.thick.forEach((t) => add(t, `thick:${t}`));
     if (S.pmin || S.pmax) add(`${S.pmin ? yen(S.pmin) : ""}〜${S.pmax ? yen(S.pmax) : ""}`, "price");
-    if (S.machine) add("洗濯機可", "machine");
+    S.care.forEach((k) => add(CARE_NAME[k], `care:${k}`));
     if (S.sale) add("期間限定・値下げ", "sale");
     S.colors.forEach((c) => add(c, `color:${c}`));
     S.sizes.forEach((s) => add(`サイズ ${s}`, `size:${s}`));
@@ -592,7 +641,7 @@
           <dt>素材</dt><dd>${parts}${p.alt ? `<br><span class="note">※色や生産時期で組成が異なります(代表的な1つを表示)。公式で確認してください</span>` : ""}</dd>
           <dt>厚さの目安</dt><dd>${p.thick} <span class="note">(商品名などから推定)</span></dd>
           ${(p.tags || []).length ? `<dt>機能</dt><dd>${p.tags.map(esc).join(" / ")}</dd>` : ""}
-          <dt>お手入れ</dt><dd>${esc(p.wash || "情報なし")}</dd>
+          <dt>洗濯・乾燥</dt><dd>${careDetail(p)}</dd>
           <dt>サイズ</dt><dd>${esc(p.sz.join(" / ") || "—")}</dd>
           <dt>評価</dt><dd>${p.r ? `★${p.r.toFixed(1)}(${p.rc.toLocaleString()}件)` : "—"}</dd>
         </dl>
@@ -635,7 +684,10 @@
     }
     row("厚さの目安", items.map((p) => p.thick));
     row("機能", items.map((p) => (p.tags || []).join(" / ") || "—"));
-    row("お手入れ", items.map((p) => p.wash || "—"));
+    row("洗濯機", items.map((p) => ({ v: p.care.machine === "可" ? 2 : p.care.machine === "ネット" ? 1 : 0, text: washLabel(p.care) })), { best: "max", always: true });
+    row("乾燥機(公式)", items.map((p) => ({ v: p.care.dryer === "可" ? 1 : 0, text: dryerLabel(p.care) })), { best: "max", always: true });
+    row("乾燥機(素材の目安)", items.map((p) => ({ v: p.dm ? p.dm.lv : null, text: p.dm ? `${DRY_LABEL[p.dm.lv]}(${p.dm.by.join("・")})` : "—" })), { best: "max" });
+    row("洗濯表示(全文)", items.map((p) => p.wash || "—"));
     row("対象", items.map((p) => p.g));
     row("色数", items.map((p) => ({ v: p.col.length, text: `${p.col.length}色` })));
     row("サイズ", items.map((p) => p.sz.join(" / ") || "—"));
@@ -658,14 +710,14 @@
     const list = Object.entries(MATS).filter(([, v]) => v.t).sort((a, b) => cnt(b[0]) - cnt(a[0]));
     // 一覧表: 行=素材、列=特性。濃いほど高い。列見出しを押すとその特性で並べ替え
     const matrix = `<div class="mx-wrap"><table class="mx">
-      <thead><tr><th>素材</th>${TRAITS.map((t) => `<th title="${esc(t.label)}: ${esc(t.hint)}">${esc(t.short || t.label)}</th>`).join("")}<th>件数</th></tr></thead>
+      <thead><tr><th>素材</th>${TRAITS.map((t) => `<th title="${esc(t.label)}: ${esc(t.hint)}">${esc(t.short || t.label)}</th>`).join("")}<th title="乾燥機への向き不向き(目安)">乾燥機</th><th>件数</th></tr></thead>
       <tbody>${list.map(([m, v]) => `<tr><th><button class="link-btn" data-guide-mat="${esc(m)}" ${cnt(m) ? "" : "disabled"}><span class="dot" style="background:${MAT_COLOR[m]}"></span>${esc(m)}</button></th>
-        ${TRAITS.map((t) => `<td style="--v:${v.t[t.key]}" aria-label="${esc(t.label)} ${v.t[t.key]}">${v.t[t.key]}</td>`).join("")}<td class="n">${cnt(m)}</td></tr>`).join("")}</tbody></table></div>`;
+        ${TRAITS.map((t) => `<td style="--v:${v.t[t.key]}" aria-label="${esc(t.label)} ${v.t[t.key]}">${v.t[t.key]}</td>`).join("")}<td class="dmc dm${DRY[m] ? DRY[m].lv : ""}" title="${esc(DRY[m] ? DRY[m].why : "")}">${DRY[m] ? DRY_LABEL[DRY[m].lv] : "—"}</td><td class="n">${cnt(m)}</td></tr>`).join("")}</tbody></table></div>`;
     openDlg("素材の特徴", `<p class="note">素材ごとの一般的な傾向(5段階の目安。濃いほど高い)。素材名を押すとその素材を含む商品を表示します。</p>
       ${matrix}
       <h3>素材ごとの説明</h3>
       <div class="guide">${list.map(([m, v]) => `<div class="gcard"><h4><span class="dot" style="background:${MAT_COLOR[m]}"></span>${esc(m)}<span class="note">${v.group}・${cnt(m)}件</span></h4>
-        <p>${esc(v.note)}</p>${traitBars(v.t, false)}
+        <p>${esc(v.note)}</p>${DRY[m] ? `<p class="note">乾燥機: <b class="dm${DRY[m].lv}">${DRY_LABEL[DRY[m].lv]}</b> — ${esc(DRY[m].why)}</p>` : ""}${traitBars(v.t, false)}
         <button class="ghost-btn" data-guide-mat="${esc(m)}" ${cnt(m) ? "" : "disabled"}>${esc(m)}を含む商品を見る</button></div>`).join("")}</div>`);
   }
 
@@ -679,6 +731,8 @@
       <p>商品画像は公式サイト上の画像を直接表示しており、このサイトには保存していません。</p>
       <h3>厚さの目安・価格表示</h3>
       <p>「厚さの目安」は商品名・公式の機能表示・中わたの有無から推定しています(例: エアリズム・シアー → 薄手、極暖・ダウン・ボア → 厚手)。「期間限定価格」「値下げ」は公式サイトの表示をそのまま出しています。</p>
+      <h3>洗濯・乾燥の表示</h3>
+      <p>「洗濯機OK」「乾燥機OK/NG」は各ブランド公式の洗濯表示と取り扱い注意の文から読み取っています。公式に書かれていない項目は「表示なし」としています。「素材から見た乾燥機の目安」は、繊維の一般的な性質(綿は縮みやすい、ウールはフェルト化する など)から出した参考情報で、本体の10%以上を占める素材のうち一番弱いものに合わせています。実際に乾燥機を使えるかは公式の洗濯表示を優先してください。</p>
       <h3>素材の特性の計算方法</h3>
       <p>素材ごとの一般的な傾向を5段階で決め(「素材の特徴」参照)、本体素材の混率で重み付け平均しています。ポリウレタンを含む場合は伸縮性を、ダウン等の中わたがある場合やヒートテック・フリースなど保温を売りにした商品は保温性を上げています。生地の厚さ・織り方・加工は考慮していないため、あくまで目安です。</p>
       <h3>個人情報</h3><p>このサイトは個人情報を集めません。絞り込みの条件や比較中の商品はページのURLに、お気に入りはこの端末のブラウザ内にだけ保存され、どこにも送信されません。</p></div>`);
@@ -744,7 +798,7 @@
         if (pr.patch.traits) S.traits = { ...pr.patch.traits };
         if (pr.patch.mats) S.mats = new Map(pr.patch.mats);
         if (pr.patch.matMin) S.matMin = pr.patch.matMin;
-        if (pr.patch.machine) S.machine = true;
+        if (pr.patch.care) S.care = new Set(pr.patch.care);
         if (pr.patch.thick) S.thick = new Set(pr.patch.thick);
         if (pr.patch.sale) S.sale = true;
         if (pr.patch.sort) S.sort = pr.patch.sort;
@@ -776,6 +830,7 @@
       case "size": toggleSet(S.sizes, d.v); break;
       case "tag": toggleSet(S.tags, d.v); break;
       case "thick": toggleSet(S.thick, d.v); break;
+      case "care": toggleSet(S.care, d.v); break;
       case "mat": {
         const st = S.mats.get(d.v);
         if (st === matPick) S.mats.delete(d.v); else S.mats.set(d.v, matPick);
@@ -801,7 +856,7 @@
     const k = t.dataset.k;
     if (k === "matMin") S.matMin = Number(t.value);
     else if (k === "pmin" || k === "pmax") S[k] = t.value ? String(Math.max(0, Math.round(Number(t.value)))) : "";
-    else if (k === "machine" || k === "sale") S[k] = t.checked;
+    else if (k === "sale") S.sale = t.checked;
     else if (t.id === "sort") S.sort = t.value;
     else return;
     changed();

@@ -201,6 +201,47 @@ def parse_composition(comp):
     return main["items"], (fill["items"] if fill else []), segs
 
 
+DRYER_NG = re.compile(r"乾燥機[^。]{0,12}(避け|不可|禁止|使用しない|お控え)|タンブル?ラ?ー?乾燥[^。]{0,6}(禁止|不可|避け)")
+DRYER_OK = re.compile(r"(乾燥機|タンブル?ラ?ー?乾燥)[^。]{0,6}(可|使用できます|使えます|OK)(?!能性)")
+
+
+def parse_care(wash_raw, care_text):
+    """洗濯表示を項目ごとに分ける。公式の表示に書かれていないものは None(=表示なし)にする。
+    machine: "可" / "ネット" / "不可"  hand: True/False  dryer: "可" / "不可"  dry: "可" / "のみ" / "不可"
+    """
+    w = wash_raw or ""
+    t = re.sub(r"<[^>]+>", " ", care_text or "")
+    tokens = [x.split("]")[-1].strip() for x in re.split(r"[,、]", w)]  # 「[30 NATURAL] 洗濯機可」→ 色ラベルを外す
+    tokens = [x for x in tokens if x]
+    c = {"machine": None, "hand": False, "dryer": None, "dry": None}
+    for x in tokens:
+        if x.startswith("洗濯機"):
+            c["machine"] = "不可" if "不可" in x else ("ネット" if "ネット" in x else "可")
+        elif x.startswith("手洗い"):
+            c["hand"] = "不可" not in x
+        elif x in ("水洗い不可", "家庭での洗濯禁止", "家庭での洗濯不可"):
+            c["machine"], c["hand"] = "不可", False
+        elif x.startswith("乾燥機"):
+            c["dryer"] = "不可" if "不可" in x else "可"
+        elif x.startswith("ドライクリーニング"):
+            c["dry"] = "不可" if "不可" in x else ("のみ" if x == "ドライクリーニング" or "のみ" in x else "可")
+    if c["dry"] == "のみ":  # GU「ドライクリーニング」= 水洗い不可
+        c["machine"], c["hand"] = "不可", False
+    if c["machine"] is None and c["hand"]:
+        c["machine"] = "不可"  # 手洗いのみ
+    if c["machine"] == "可" and re.search(r"(洗濯|ランドリー)ネット", t):
+        c["machine"] = "ネット"
+    # 乾燥機は注意書きの文からも読む(GU は一覧の表示に乾燥機の項目が無い)
+    if c["dryer"] is None:
+        if DRYER_NG.search(t):
+            c["dryer"] = "不可"
+        elif DRYER_OK.search(t):
+            c["dryer"] = "可"
+    if c["machine"] == "不可" and not c["hand"]:
+        c["dryer"] = c["dryer"] or "不可"  # 水洗いできない服は乾燥機も使わない
+    return c
+
+
 def main():
     src = sys.argv[sys.argv.index("--src") + 1] if "--src" in sys.argv else DATA  # 例: --src data/next
     products, meta = [], {}
@@ -211,7 +252,9 @@ def main():
         brand, host = raw["brand"], raw["host"]
         meta[brand] = {"fetchedAt": raw["fetchedAt"], "count": 0}
         for rec in raw["items"]:
-            it, d = rec["list"], rec.get("detail") or {}
+            it, d = rec["list"], rec.get("detail")
+            if not d:  # 詳細(素材・洗濯表示)が取れていない商品は載せない
+                continue
             pid, pg = it["productId"], it.get("priceGroup", "00")
             prices = it.get("prices") or {}
             base = (prices.get("base") or {}).get("value")
@@ -223,7 +266,7 @@ def main():
             imgs = (it.get("images") or {}).get("main") or {}
             rep = it.get("representativeColorDisplayCode")
             img = (imgs.get(rep) or next(iter(imgs.values()), {})).get("image") if imgs else None
-            hexmap = rec.get("hex") or {}
+            hexmap = rec.get("hex") or raw.get("hex") or {}
             colors = []
             for c in it.get("colors") or []:
                 colors.append([c.get("name", ""), hexmap.get(c.get("code")) or "#cccccc", c.get("displayCode"), c.get("filterCode") or ""])
@@ -232,6 +275,7 @@ def main():
             # GU は「洗濯機」「手洗い」「ドライクリーニング」の一語表記なので、ユニクロの書き方にそろえる
             wash = {"洗濯機": "洗濯機可", "手洗い": "手洗い可", "ドライクリーニング": "ドライクリーニングのみ(水洗い不可)",
                     "家庭での洗濯禁止": "家庭での洗濯不可"}.get(wash, wash)
+            care = parse_care(d.get("washingInformation"), d.get("careInstruction"))
             rating = it.get("rating") or {}
             products.append({
                 "id": f"{brand}-{pid}",
@@ -258,8 +302,9 @@ def main():
                 "wash": wash,
                 # 公式の価格表示(「11/12まで期間限定価格」「値下げ」など)。通常価格は一覧 API に無いので割引率は出せない
                 "pf": [f.get("name") for f in ((it.get("representative") or {}).get("flags") or {}).get("priceFlags") or [] if f.get("name")],
-                "machine": "洗濯機" in wash and "不可" not in wash.split("洗濯機")[1][:3],
-                "hand": "手洗い" in wash,
+                "machine": care["machine"] in ("可", "ネット"),
+                "hand": care["hand"],
+                "care": care,
             })
             meta[brand]["count"] += 1
     # 同名・同価格・同対象の商品(柄違い・限定色など)は1枚のカードにまとめる
