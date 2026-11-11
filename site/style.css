@@ -310,3 +310,24 @@ h3 { font-size: 15px; margin: 20px 0 8px; }
 .cb.dm1, b.dm1, .dmc.dm1 { color: var(--muted); }
 .cb.dm0, b.dm0, .dmc.dm0 { color: var(--sale); }
 .dmc { font-size: 12px; white-space: nowrap; }
+
+/* 固定ページ(tools/gen_pages.py が作る cat/・care/・browse.html) */
+.sp-main { max-width: 960px; margin: 0 auto; padding: 16px; }
+.sp-main h1 { font-size: 24px; margin: 8px 0; line-height: 1.35; }
+.sp-main h2 { font-size: 17px; margin: 28px 0 10px; }
+.sp-crumb { font-size: 12px; color: var(--muted); }
+.sp-crumb a, .sp-nav a, .sp-name { color: var(--accent); }
+.sp-lead { color: var(--muted); margin: 4px 0 12px; }
+.sp-stats { list-style: none; padding: 0; margin: 0 0 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+.sp-stats li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 12px; font-size: 13px; display: flex; gap: 8px; align-items: baseline; }
+.sp-go { display: inline-block; text-decoration: none; }
+.sp-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+.sp-item { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; min-width: 0; }
+.sp-name { font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
+.sp-name:hover { text-decoration: underline; }
+.sp-meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 2px; }
+.sp-nav { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
+.sp-nav span { color: var(--muted); font-size: 12px; }
+.sp-nav a[aria-current="page"] { color: var(--text); font-weight: 700; text-decoration: none; }
+.foot a { color: var(--accent); }
+@media (max-width: 860px) { .sp-main h1 { font-size: 20px; } .sp-list { grid-template-columns: minmax(0, 1fr); } }

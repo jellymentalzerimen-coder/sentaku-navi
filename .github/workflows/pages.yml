@@ -70,6 +70,10 @@ jobs:
           python -I scraper/build_data.py
           MIN_BRAND=300 python -I tools/check_data.py
 
+      # push の時も含めて毎回 data.js から作り直す(件数・取得日をデータとそろえる)
+      - name: カテゴリ別・洗濯条件別の固定ページを作る
+        run: python -I tools/gen_pages.py
+
       - name: data.js の更新をコミット
         if: github.event_name != 'push'
         run: |
