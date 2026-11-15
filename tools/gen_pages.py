@@ -11,11 +11,13 @@ import html
 import json
 import os
 import sys
+from urllib.parse import quote
 
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SITE = os.path.join(ROOT, "site")
-# canonical などの絶対 URL は入れない: 公開 URL にアカウント名が含まれ、tools/export_public.sh の個人情報チェックに掛かるため(扱いは人間が決める)
+# 公開 URL(canonical・sitemap 用)。ページと sitemap に入れることは 2026-11-11 承認済み
+BASE = "https://jellymentalzerimen-coder.github.io/sentaku-navi/"
 MIN_ITEMS = 5
 
 src = open(os.path.join(SITE, "data.js"), encoding="utf-8").read()
@@ -46,6 +48,18 @@ CARE_PAGES = [
     ("dryer-ok", "d", "乾燥機OKの服", "公式の洗濯表示でタンブル乾燥(乾燥機)ができる",
      lambda c: c.get("dryer") == "可"),
 ]
+
+
+# 素材ページ: 一番多い素材(主素材)で分ける。dryer は site/materials.js の SN_DRYER と同じ一般的な傾向(2 向く/1 注意/0 不向き)
+MAT_PAGES = [
+    ("綿", "cotton", 1), ("ポリエステル", "polyester", 2), ("アクリル", "acrylic", 0), ("ナイロン", "nylon", 1),
+    ("レーヨン", "rayon", 0), ("毛", "wool", 0), ("カシミヤ", "cashmere", 0), ("麻", "linen", 1),
+]
+DRYER_TXT = {2: "乾燥機に向く(熱に強い)", 1: "乾燥機は注意(縮み・傷みが出ることがある)", 0: "乾燥機に向かない(縮みやすい・熱に弱い)"}
+
+
+def main_mat(p):
+    return max(p["mat"], key=lambda m: m["p"]) if p.get("mat") else None
 
 
 def wash_label(c):
@@ -102,11 +116,29 @@ def item_html(p, up):
     )
 
 
-def page(path, title, h1, desc, lead, crumbs, items, app_hash, nav):
+def head_extra(path, crumbs):
+    """canonical・og:url・パンくずの構造化データ(Google が読む)"""
+    url = BASE + ("" if path == "index.html" else path)
+    ld = {
+        "@context": "https://schema.org", "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": i + 1, "name": name, **({"item": BASE + ("" if href == "index.html" else href)} if href else {})}
+            for i, (name, href) in enumerate(crumbs)
+        ],
+    }
+    return (
+        f'<link rel="canonical" href="{e(url)}">\n<meta property="og:url" content="{e(url)}">\n'
+        f'<meta property="og:site_name" content="洗濯ナビ">\n'
+        f'<script type="application/ld+json">{json.dumps(ld, ensure_ascii=False)}</script>'
+    )
+
+
+def page(path, title, h1, desc, lead, crumbs, items, app_hash, nav, note=""):
     up = "../" * path.count("/")
     crumb_html = " › ".join(
         f'<a href="{up}{href}">{e(name)}</a>' if href is not None else f"<span>{e(name)}</span>" for name, href in crumbs
     )
+    note_html = f'<p class="sp-lead">{e(note)}</p>' if note else ""
     st = "".join(f"<li><span>{e(k)}</span><b>{v}件</b></li>" for k, v in stats(items))
     items = sorted(items, key=lambda p: (list(BRAND_LABEL).index(p["b"]) if p["b"] in BRAND_LABEL else 99, p.get("p") or 0, p["n"]))
     lis = "\n".join(item_html(p, up) for p in items)
@@ -126,6 +158,7 @@ def page(path, title, h1, desc, lead, crumbs, items, app_hash, nav):
 <meta property="og:type" content="website">
 <meta property="og:title" content="{e(title)}">
 <meta property="og:description" content="{e(desc)}">
+{head_extra(path, crumbs)}
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f5f8b'/%3E%3Cpath d='M9 11l4-4h6l4 4-3 3v11H12V14z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="{up}style.css">
 </head>
@@ -135,6 +168,7 @@ def page(path, title, h1, desc, lead, crumbs, items, app_hash, nav):
 <nav class="sp-crumb" aria-label="パンくず">{crumb_html}</nav>
 <h1>{e(h1)}</h1>
 <p class="sp-lead">{e(lead)}</p>
+{note_html}
 <ul class="sp-stats" aria-label="洗濯表示の内訳">{st}</ul>
 <p><a class="primary-btn sp-go" href="{up}index.html#{e(app_hash)}">洗濯ナビで絞り込んで比べる</a></p>
 <h2>{len(items)}件の一覧(ブランド・価格順)</h2>
@@ -178,14 +212,41 @@ def by_care():
     return out
 
 
+def by_mat():
+    """主素材(一番多い素材)ごと + 綿100%"""
+    out = []
+    for name, slug, dl in MAT_PAGES:
+        items = [p for p in P if (m := main_mat(p)) and m["n"] == name]
+        if len(items) >= MIN_ITEMS:
+            label = {"毛": "ウール(毛)"}.get(name, name)
+            out.append((label, f"{label}が主素材の服", f"mat/{slug}.html", items, dl, "mi=" + quote(name)))
+    items = [p for p in P if len(p.get("mat") or []) == 1 and p["mat"][0]["n"] == "綿" and p["mat"][0]["p"] == 100]
+    if len(items) >= MIN_ITEMS:
+        out.append(("綿", "綿100%の服", "mat/cotton-100.html", items, 1, "mi=" + quote("綿") + "&mp=100"))
+    return out
+
+
+def by_dryer_cat(cats):
+    """乾燥機OK × カテゴリ(「乾燥機OK Tシャツ」のような探し方向け)"""
+    out = []
+    for cat, path, items in cats:
+        ok = [p for p in items if care(p).get("dryer") == "可"]
+        if len(ok) >= MIN_ITEMS:
+            out.append((cat, f"care/dryer-ok-{path.split('/')[1]}", ok))
+    return out
+
+
 def main():
     from urllib.parse import quote
     cats, cares = by_cat(), by_care()
-    used = [path for _, path, _ in cats]
+    mats, dcats = by_mat(), by_dryer_cat(cats)
+    used = [path for _, path, _ in cats] + [m[2] for m in mats] + [path for _, path, _ in dcats]
     if len(used) != len(set(used)):
-        sys.exit("CAT_SLUG の URL 名が重複しています")
-    nav = [(cat, path, len(items)) for cat, path, items in cats] + [(name, path, len(items)) for _, _, name, _, path, items in cares]
-    for d in ("cat", "care"):
+        sys.exit("ページの URL 名が重複しています")
+    nav = ([(cat, path, len(items)) for cat, path, items in cats]
+           + [(name, path, len(items)) for _, _, name, _, path, items in cares]
+           + [(h, path, len(items)) for _, h, path, items, _, _ in mats])
+    for d in ("cat", "care", "mat"):
         os.makedirs(os.path.join(SITE, d), exist_ok=True)
         for f in os.listdir(os.path.join(SITE, d)):
             if f.endswith(".html"):
@@ -205,12 +266,35 @@ def main():
         lead = f"{brand_names(P)}の服{len(P)}件のうち、{rule}もの{len(items)}件({fetched_txt}時点)の一覧です。"
         crumbs = [("洗濯ナビ", "index.html"), ("カテゴリ・条件から探す", "browse.html"), (name, None)]
         written.append((path, page(path, title, name, desc, lead, crumbs, items, "cr=" + key, nav)))
+    for mname, h, path, items, dl, hsh in mats:
+        bn = brand_names(items)
+        cs = [care(p) for p in items]
+        n_dry = sum(c.get("dryer") == "可" for c in cs)
+        n_mac = sum(c.get("machine") in ("可", "ネット") for c in cs)
+        title = f"{h}は乾燥機・洗濯機OK?洗濯表示で比べる({bn}{len(items)}件)| 洗濯ナビ"
+        desc = (f"{bn}の{h}{len(items)}件のうち、公式の洗濯表示で洗濯機OKは{n_mac}件、乾燥機OKは{n_dry}件。"
+                f"{fetched_txt}時点の非公式まとめ。")
+        lead = (f"{bn}の服のうち{h}{len(items)}件({fetched_txt}時点)の一覧です。"
+                f"公式の洗濯表示では、洗濯機で洗えるのが{n_mac}件、乾燥機OKが{n_dry}件でした。")
+        note = f"{mname}は一般的に{DRYER_TXT[dl]}素材です。ただし服ごとの洗濯表示が優先です。"
+        crumbs = [("洗濯ナビ", "index.html"), ("カテゴリ・条件から探す", "browse.html"), (h, None)]
+        written.append((path, page(path, title, f"{h}の洗濯表示", desc, lead, crumbs, items, hsh, nav, note)))
+    for cat, path, items in dcats:
+        bn = brand_names(items)
+        h = f"乾燥機OKの{cat}"
+        title = f"{h}({bn}{len(items)}件)| 洗濯ナビ"
+        desc = f"{bn}の{cat}のうち、公式の洗濯表示でタンブル乾燥(乾燥機)ができるもの{len(items)}件の一覧。{fetched_txt}時点の非公式まとめ。"
+        lead = f"{bn}の{cat}のうち、公式の洗濯表示でタンブル乾燥(乾燥機)ができるもの{len(items)}件({fetched_txt}時点)の一覧です。"
+        crumbs = [("洗濯ナビ", "index.html"), ("カテゴリ・条件から探す", "browse.html"), ("乾燥機OKの服", "care/dryer-ok.html"), (h, None)]
+        written.append((path, page(path, title, h, desc, lead, crumbs, items, "cr=d&c=" + quote(cat), nav)))
     for path, body in written:
         with open(os.path.join(SITE, path), "w", encoding="utf-8", newline="\n") as f:
             f.write(body)
     # 一覧ページ
     lis_cat = "".join(f'<li><a href="{path}">{e(cat)}</a> <span>{len(items)}件</span></li>' for cat, path, items in cats)
     lis_care = "".join(f'<li><a href="{path}">{e(name)}</a> <span>{len(items)}件</span></li>' for _, _, name, _, path, items in cares)
+    lis_care += "".join(f'<li><a href="{path}">乾燥機OKの{e(cat)}</a> <span>{len(items)}件</span></li>' for cat, path, items in dcats)
+    lis_mat = "".join(f'<li><a href="{path}">{e(h)}</a> <span>{len(items)}件</span></li>' for _, h, path, items, _, _ in mats)
     bn = brand_names(P)
     browse = f"""<!doctype html>
 <html lang="ja">
@@ -221,6 +305,7 @@ def main():
 <title>カテゴリ・洗濯条件から探す | 洗濯ナビ</title>
 <meta name="description" content="{e(bn)}の服{len(P)}件を、カテゴリ別・洗濯条件別(洗濯機・乾燥機)に一覧できるページの目次。{e(fetched_txt)}時点の非公式まとめ。">
 <meta name="theme-color" content="#1f5f8b">
+{head_extra("browse.html", [("洗濯ナビ", "index.html"), ("カテゴリ・条件から探す", None)])}
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f5f8b'/%3E%3Cpath d='M9 11l4-4h6l4 4-3 3v11H12V14z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -234,6 +319,8 @@ def main():
 <ul class="sp-nav">{lis_cat}</ul>
 <h2>洗濯条件(公式の洗濯表示から)</h2>
 <ul class="sp-nav">{lis_care}</ul>
+<h2>素材</h2>
+<ul class="sp-nav">{lis_mat}</ul>
 </main>
 <footer class="foot">
 <p><strong>非公式サイトです。</strong>掲載ブランドとは関係ありません。価格・在庫・素材は取得時点の参考情報です。購入前に必ず公式サイトで確認してください。</p>
@@ -244,9 +331,16 @@ def main():
 """
     with open(os.path.join(SITE, "browse.html"), "w", encoding="utf-8", newline="\n") as f:
         f.write(browse)
-    print(f"固定ページ {len(written)}件 + browse.html を作りました")
-    for path, n in [(path, len(items)) for _, path, items in cats] + [(path, len(items)) for *_, path, items in cares]:
-        print(f"  {path}: {n}件")
+    # 検索エンジン向け: サイトの地図と robots.txt
+    last = max(fetched) if fetched else ""
+    urls = ["", "browse.html"] + [path for path, _ in written]
+    sm = "".join(f"<url><loc>{e(BASE + u)}</loc><lastmod>{last}</lastmod></url>\n" for u in urls)
+    with open(os.path.join(SITE, "sitemap.xml"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{sm}</urlset>\n')
+    # robots.txt は作らない: GitHub Pages のサブフォルダ(/sentaku-navi/)に置いても検索エンジンは読まない。sitemap は Search Console で登録する
+    print(f"固定ページ {len(written)}件 + browse.html + sitemap.xml({len(urls)} URL) を作りました")
+    for path, body in written:
+        print(f"  {path}")
 
 
 if __name__ == "__main__":

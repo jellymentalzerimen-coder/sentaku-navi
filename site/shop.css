@@ -132,3 +132,10 @@
 .card-brand { flex-wrap: nowrap; min-width: 0; }
 .card-brand .card-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .card-brand .bn { flex: 0 0 auto; white-space: nowrap; }
+
+/* アフィリエイト(広告)の欄: PR を必ず表示 */
+.aff { margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--surface-2); }
+.aff-h { margin: 0 0 8px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.pr { font-size: 11px; font-weight: 700; border: 1px solid var(--muted); color: var(--muted); border-radius: 3px; padding: 0 5px; line-height: 1.5; }
+.aff-links { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.aff-links a { text-decoration: none; font-size: 13px; padding: 6px 14px; }

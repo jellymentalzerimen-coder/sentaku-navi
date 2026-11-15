@@ -351,3 +351,4 @@ h3 { font-size: 15px; margin: 20px 0 8px; }
 .matrow.on .n, .matrow.on .mf-dry, .matrow.on .mf-good { color: inherit; border-color: currentColor; opacity: .85; }
 .matrow.ex { background: var(--exclude-soft); border-color: var(--exclude); color: var(--exclude); }
 .matrow .exb { font-size: 11px; background: var(--exclude); color: var(--exclude-ink); border-radius: 4px; padding: 0 4px; }
+.foot-links { display: flex; flex-wrap: wrap; gap: 4px 14px; }

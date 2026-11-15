@@ -695,6 +695,27 @@
     const others = P.filter((q) => q.b !== p.b && q.id !== p.id && kids(q) === kids(p));
     return others.map((q) => [score(q), q]).sort((a, b) => b[0] - a[0]).slice(0, n).map((x) => x[1]);
   }
+  // 他の通販サイトで「同じ素材・同じ種類の服」を探すリンク(アフィリエイト=広告。PR と明示する)
+  // 商品名では検索しない(転売品へ誘導しないため)。素材とカテゴリだけで検索する
+  function affQuery(p) {
+    const cat = (p.cat || "").split("・")[0];
+    const m = p.mat[0];
+    if (!m) return cat;
+    return m.p >= 100 ? `${m.n}100% ${cat}` : `${p.mat.slice(0, 2).map((x) => x.n).join(" ")} ${cat}`;
+  }
+  function affLinks(p) {
+    const a = (CONFIG && CONFIG.affiliate) || {};
+    const q = affQuery(p);
+    const enc = encodeURIComponent(q);
+    const links = [];
+    if (a.amazonTag) links.push(["Amazon", `https://www.amazon.co.jp/s?k=${enc}&tag=${encodeURIComponent(a.amazonTag)}`]);
+    if (a.yahooUrl) links.push(["Yahoo!ショッピング", a.yahooUrl.replace("{q}", enc)]);
+    if (a.rakutenUrl) links.push(["楽天市場", a.rakutenUrl.replace("{q}", enc)]);
+    if (!links.length) return "";
+    return `<div class="aff"><p class="aff-h"><span class="pr">PR</span>「${esc(q)}」を他の通販サイトで探す</p>
+      <div class="aff-links">${links.map(([n, u]) => `<a class="ghost-btn" href="${esc(u)}" target="_blank" rel="sponsored noopener noreferrer">${esc(n)}で探す</a>`).join("")}</div>
+      <p class="note">広告(アフィリエイト)リンクです。リンク先での購入により、このサイトに紹介料が入ることがあります。リンク先の商品の洗濯表示・素材はこのサイトでは確認していません。</p></div>`;
+  }
   function openDetail(id) {
     const p = BY_ID.get(id);
     if (!p) return;
@@ -736,6 +757,7 @@
           <button class="ghost-btn" data-cmp="${p.id}" aria-pressed="${inCmp}">${inCmp ? "比較から外す" : "比較に追加"}</button>
           <button class="ghost-btn fav-btn" data-fav="${p.id}" aria-pressed="${favs.has(p.id)}" aria-label="お気に入り${favs.has(p.id) ? "から外す" : "に追加"}">${favs.has(p.id) ? "♥" : "♡"}</button>
         </p>
+        ${affLinks(p)}
       </div></div>
       <h3>他ブランドの似た商品</h3>
       <p class="note">素材の構成・カテゴリ・価格が近いものを表示</p>
