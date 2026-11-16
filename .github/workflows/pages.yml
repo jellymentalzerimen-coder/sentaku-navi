@@ -79,9 +79,10 @@ jobs:
         run: |
           git config user.name "sentaku-navi-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add site/data.js
+          # 固定ページ(gen_pages.py が作り直すもの)も一緒にコミットする。残すと pull --rebase が「未コミットの変更」で止まる(2026-11-16 の定期更新が失敗した原因)
+          git add site/data.js site/browse.html site/sitemap.xml site/cat site/care site/mat
           git diff --cached --quiet || git commit -m "data: 定期更新 $(date -u +%Y-%m-%d)"
-          git pull -q --rebase && git push
+          git pull -q --rebase --autostash && git push
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
